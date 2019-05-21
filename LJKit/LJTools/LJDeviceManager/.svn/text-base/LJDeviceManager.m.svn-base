@@ -1,0 +1,190 @@
+//
+//  LJDeviceManager.m
+//  SuDianPlay
+//
+//  Created by coder on 2019/4/17.
+//  Copyright © 2019年 coder. All rights reserved.
+//
+
+#import "LJDeviceManager.h"
+#import <AVFoundation/AVFoundation.h>
+#import <AssetsLibrary/AssetsLibrary.h>
+#import <Photos/PHPhotoLibrary.h>
+
+//是否是iPad
+#define LJS_is_iPad (UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPad)
+
+@implementation LJImagePickerConfig
+
+- (instancetype)init {
+    self = [super init];
+    if (self) {
+        
+    }
+    return self;
+}
+
+@end
+
+static LJDeviceManager *deviceManager = nil;
+
+@interface LJDeviceManager () <UINavigationControllerDelegate, UIImagePickerControllerDelegate>
+
+@property (nonatomic, strong) LJImagePickerConfig *imagePickerConfig;
+
+@end
+
+@implementation LJDeviceManager
+
++ (id)shareManager {
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        deviceManager = [[self alloc] init];
+    });
+    return deviceManager;
+}
+
++ (id)alloc {
+    @synchronized (self) {
+        if (!deviceManager) {
+            return [super alloc];
+        }
+    }
+    return deviceManager;
+}
+
+//判断相机是否被授权使用
+- (BOOL)cameraBeAuthorized {
+    AVAuthorizationStatus avStatus = [AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeVideo];
+    if (avStatus == AVAuthorizationStatusRestricted || avStatus == AVAuthorizationStatusDenied) {
+        return NO;
+    }else {
+        return YES;
+    }
+}
+
+- (void)showSourceTypeAlert:(NSArray *)sourceTypes {
+    UIAlertController *alertController = [UIAlertController alertControllerWithTitle:nil message:nil preferredStyle:UIAlertControllerStyleActionSheet];
+    UIAlertAction *cancelAction = [UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil];
+    [alertController addAction:cancelAction];
+    for (NSNumber *sourceType in sourceTypes) {
+        UIAlertAction *action;
+        if (sourceType.integerValue == UIImagePickerControllerSourceTypePhotoLibrary) {
+            action = [UIAlertAction actionWithTitle:@"从手机相册选择" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+                [self showImagePicker:UIImagePickerControllerSourceTypePhotoLibrary];
+            }];
+        }else if (sourceType.integerValue == UIImagePickerControllerSourceTypeCamera) {
+            action = [UIAlertAction actionWithTitle:@"拍照" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+                [self showImagePicker:UIImagePickerControllerSourceTypeCamera];
+            }];
+        }else {
+            action = [UIAlertAction actionWithTitle:@"从手机相簿选择" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+                [self showImagePicker:UIImagePickerControllerSourceTypeSavedPhotosAlbum];
+            }];
+        }
+        [alertController addAction:action];
+    }
+    [_imagePickerConfig.actionVC presentViewController:alertController animated:YES completion:nil];
+}
+
+- (void)callImagePicker:(LJImagePickerConfig *)config {
+    if (![config.actionVC isKindOfClass:[UIViewController class]]) {
+        return;
+    }
+    _imagePickerConfig = config;
+    //源类型判断
+    NSMutableArray *sourceTypes = [[NSMutableArray alloc] init];
+    if ((_imagePickerConfig.sourceType & 0b00000010) == LJSourceTypeCamera) {
+        [sourceTypes addObject:@(UIImagePickerControllerSourceTypeCamera)];
+    }
+    if ((_imagePickerConfig.sourceType & 0b00000001) == LJSourceTypePhotoLibrary) {
+        [sourceTypes addObject:@(UIImagePickerControllerSourceTypePhotoLibrary)];
+    }
+    if ((_imagePickerConfig.sourceType & 0b00000100) == LJSourceTypeSavedPhotosAlbum) {
+        [sourceTypes addObject:@(UIImagePickerControllerSourceTypeSavedPhotosAlbum)];
+    }
+    if (sourceTypes.count == 1) {
+        [self showImagePicker:[sourceTypes.firstObject integerValue]];
+    }else if (sourceTypes.count > 1) {
+        [self showSourceTypeAlert:sourceTypes];
+    }else {
+        return;
+    }
+    
+}
+
+- (BOOL)checkCameraAvailable {
+    // 判断是否可以打开相机
+    if ([UIImagePickerController isSourceTypeAvailable:UIImagePickerControllerSourceTypeCamera]) {
+        //相机未授权
+        if (![self cameraBeAuthorized]) {
+            UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"提示" message:@"请前往设置->隐私->相机授权应用拍照权限" preferredStyle:UIAlertControllerStyleAlert];
+            UIAlertAction *confirm = [UIAlertAction actionWithTitle:@"确定" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+                [[UIApplication sharedApplication]openURL:[NSURL URLWithString:UIApplicationOpenSettingsURLString]];
+            }];
+            UIAlertAction *cancel = [UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil];
+            [alert addAction:confirm];
+            [alert addAction:cancel];
+            [_imagePickerConfig.actionVC presentViewController:alert animated:YES completion:nil];
+            return NO;
+        }
+    }else {
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"提示" message:@"未检测到相机" preferredStyle:UIAlertControllerStyleAlert];
+        UIAlertAction *confirm = [UIAlertAction actionWithTitle:@"确定" style:UIAlertActionStyleDefault handler:nil];
+        [alert addAction:confirm];
+        [_imagePickerConfig.actionVC presentViewController:alert animated:YES completion:nil];
+        return NO;
+    }
+    return YES;
+}
+
+- (void)showImagePicker:(UIImagePickerControllerSourceType)sourceType {
+    if (sourceType == UIImagePickerControllerSourceTypeCamera) {
+        if (![self checkCameraAvailable]) {
+            return;
+        }
+    }
+    // 1.创建图片选择控制器
+    UIImagePickerController *picker = [[UIImagePickerController alloc] init];
+    picker.delegate = self;
+    // 2.设置控制器打开数据的类型(相册/相机/本地图片)
+    picker.sourceType = sourceType;
+    // 3.开启编辑模式, 允许用户编辑图片
+    picker.allowsEditing = _imagePickerConfig.allowsEditing;
+    
+    if (LJS_is_iPad) {
+        UIPopoverController *popover = [[UIPopoverController alloc] initWithContentViewController:picker];
+        [popover presentPopoverFromRect:[_imagePickerConfig.actionView.superview convertRect:_imagePickerConfig.actionView.frame toView:nil] inView:_imagePickerConfig.actionVC.view permittedArrowDirections:UIPopoverArrowDirectionAny animated:YES];
+    }else {
+        [_imagePickerConfig.actionVC presentViewController:picker animated:YES completion:nil];
+    }
+}
+
+//选择图片回调
+- (void)imagePickerController:(UIImagePickerController *)picker didFinishPickingMediaWithInfo:(NSDictionary *)info {
+    // 取出选中的图片
+    UIImage *selectImage;
+    if (_imagePickerConfig.allowsEditing) {
+        selectImage = info[UIImagePickerControllerEditedImage];
+    }else {
+        selectImage = info[UIImagePickerControllerOriginalImage];
+    }
+    if (_imagePickerConfig.imagePickerBlock) {
+        _imagePickerConfig.imagePickerBlock(selectImage);
+    }
+    if ([_delegate respondsToSelector:@selector(receiveImage:)]) {
+        [_delegate receiveImage:[selectImage fixOrientation]];
+    }
+    [picker dismissViewControllerAnimated:YES completion:^{
+        
+    }];
+}
+
+//点击取消按钮的回调
+- (void)imagePickerControllerDidCancel:(UIImagePickerController *)picker {
+    [picker dismissViewControllerAnimated:YES completion:^{
+        
+    }];
+}
+
+@end

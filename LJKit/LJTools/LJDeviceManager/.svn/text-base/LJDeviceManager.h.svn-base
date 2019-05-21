@@ -1,0 +1,46 @@
+//
+//  LJDeviceManager.h
+//  SuDianPlay
+//
+//  Created by coder on 2019/4/17.
+//  Copyright © 2019年 coder. All rights reserved.
+//
+
+#import <Foundation/Foundation.h>
+
+typedef NS_ENUM(NSUInteger, LJSourceType) {
+    LJSourceTypeNone = 0,
+    LJSourceTypePhotoLibrary = 1 << 0,
+    LJSourceTypeCamera = 1 << 1,
+    LJSourceTypeSavedPhotosAlbum = 1 << 2,
+};
+
+@interface LJImagePickerConfig : NSObject
+
+//@property (nonatomic, assign) UIImagePickerControllerSourceType sourceType;
+@property (nonatomic, assign) LJSourceType sourceType;
+@property (nonatomic, assign) BOOL allowsEditing;
+@property (nonatomic, weak) UIViewController *actionVC;
+@property (nonatomic, weak) UIView *actionView;
+@property (nonatomic, copy) void (^imagePickerBlock)(UIImage *image);
+
+@end
+
+@protocol LJDeviceProtocol <NSObject>
+
+- (void)receiveImage:(UIImage *)image;
+
+@end
+
+@interface LJDeviceManager : NSObject
+
+@property (nonatomic, weak) id<LJDeviceProtocol> delegate;
+
++ (id)shareManager;
+
+- (BOOL)cameraBeAuthorized;
+- (void)callImagePicker:(LJImagePickerConfig *)config;
+
+@end
+
+
