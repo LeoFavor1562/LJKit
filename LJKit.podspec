@@ -82,7 +82,7 @@ Pod::Spec.new do |spec|
   #
 
   spec.source       = { :git => "https://github.com/LeoFavor1562/LJKit.git", :tag => "0.0.1" }
-
+  #0ef6aa01b8582baf33683d39da906a28ebda1107
 
   # ――― Source Code ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――― #
   #
